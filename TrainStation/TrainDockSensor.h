@@ -6,7 +6,7 @@
 
 struct TrainDockSensorDefaults
 {
-  using Pin = PinIO<7, GpioMode::DigitalIn>;
+  using Pin = PinIO<7, GpioMode::AnalogIn>;
   static constexpr const char * propertyID = "01020002";
   static constexpr int timingMS = 250;
 };
@@ -15,8 +15,15 @@ template<typename Traits = TrainDockSensorDefaults>
 class TrainDockSensor : ScheduledRunner
 {
 public:
+  enum class Docked : uint8_t
+  {
+    None,
+    Passive,
+    Charging
+  };
+
   TrainDockSensor(Scheduler& scheduler, BLEServiceRunner& ble)
-  : _detected(GpioLevel::Low)
+  : _detected(Docked::None)
   , _sensedChar(ble, Traits::propertyID, &_detected)
   , _task(scheduler, Traits::timingMS, this)
   {
@@ -27,12 +34,16 @@ public:
   }
 
 private:
-  GpioLevel _detected;
+  Docked _detected;
   IDBTCharacteristic _sensedChar;
   TaskThunk _task;
 
   virtual void loop(Task&)
   {
-	_detected = Traits::Pin::read();
+    auto value = Traits::Pin::read();
+    auto detected = value < 5 ? Docked::None : value < 20 ? Docked::Passive : Docked::Charging;
+    if (detected != _detected) {
+      _sensedChar.ble.writeValue((uint8_t)detected);
+    }
   }
 };

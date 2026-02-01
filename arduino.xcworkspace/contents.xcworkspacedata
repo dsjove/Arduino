@@ -5,7 +5,7 @@
       location = "group:Christof">
    </FileRef>
    <FileRef
-      location = "group:TrainDockingStation">
+      location = "group:TrainStation">
    </FileRef>
    <FileRef
       location = "group:TheJoveExpress">

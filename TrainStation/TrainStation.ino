@@ -6,7 +6,7 @@
 #include "TrainDockSensor.h"
 
 Scheduler _runner;
-BLEServiceRunner _ble(_runner, "Train Docking");
+BLEServiceRunner _ble(_runner, "Train Station");
 MatrixR4Display _matrixR4(_ble, true, true);
 RFIDBroadcaster<> _rfidBroadcaster(_runner, _ble);
 TrainDockSensor<> _trainDockSensor(_runner, _ble);
@@ -34,7 +34,7 @@ void setup()
   _rfidBroadcaster.begin();
   _trainDockSensor.begin();
 
-    announceTask.enable();
+  announceTask.enable();
 }
 
 void loop()
