@@ -1,0 +1,91 @@
+##################################################
+# Arduino IDE
+##################################################
+
+# Arduino build output
+*.elf
+*.hex
+*.bin
+*.map
+*.eep
+
+# Arduino IDE temporary files
+*.ino.cpp
+*.ino.hpp
+
+# Arduino CLI / IDE caches
+.build/
+build/
+arduino-build/
+arduino_cache/
+
+##################################################
+# PlatformIO
+##################################################
+
+.pio/
+.pioenvs/
+.piolibdeps/
+.platformio/
+
+##################################################
+# VS Code
+##################################################
+
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+
+# C/C++ extension cache
+.vscode/ipch/
+
+##################################################
+# macOS
+##################################################
+
+.DS_Store
+.AppleDouble
+.LSOverride
+
+##################################################
+# Windows
+##################################################
+
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+##################################################
+# Linux
+##################################################
+
+*~
+
+##################################################
+# C/C++ tooling
+##################################################
+
+# Clang / GCC
+*.o
+*.a
+*.so
+*.d
+*.gcda
+*.gcno
+*.gcov
+
+# CMake (if someone experiments locally)
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+
+##################################################
+# Unit test / local experiments
+##################################################
+
+# Local scratch or experiments (optional convention)
+scratch/
+tmp/
