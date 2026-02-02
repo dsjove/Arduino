@@ -21,7 +21,7 @@ namespace mic
 
   namespace device
   {
-    inline constexpr i2s_port_t port = I2S_NUM_1; // keep separate from your MAX98357A TX on I2S_NUM_0
+    inline constexpr i2s_port_t port = I2S_NUM_0; // keep separate from your MAX98357A TX on I2S_NUM_0
   }
 
   struct Config

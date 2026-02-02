@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../task/TaskThunk.h"
+#include "../PinIO/TaskThunk.h"
 #include "../ble/IDBTCharacteristic.h"
 #include "RFIDDetector.h"
 

@@ -2,7 +2,7 @@
 
 #include <ArduinoBLE.h>
 #include "BLEUUID.h"
-#include "../task/TaskThunk.h"
+#include "../PinIO/TaskThunk.h"
 
 class BLEServiceRunner
 {

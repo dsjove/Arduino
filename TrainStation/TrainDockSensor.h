@@ -1,6 +1,6 @@
 #pragma once
 
-#include "src/task/TaskThunk.h"
+#include "src/PinIO/TaskThunk.h"
 #include "src/ble/IDBTCharacteristic.h"
 #include "src/PinIO/PinIO.h"
 
