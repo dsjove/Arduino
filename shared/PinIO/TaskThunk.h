@@ -27,6 +27,9 @@ public:
     task.setLtsPointer(this);
   }
 
+  void enable() { task.enable(); }
+  void disable() { task.disable(); }
+
 private:
   Task task;
   ScheduledRunner* runner;

@@ -7,7 +7,7 @@
 
 Scheduler _runner;
 BLEServiceRunner _ble(_runner, "Train Station");
-MatrixR4Display _matrixR4(_ble, true, true);
+MatrixR4Display _matrixR4(_runner, _ble, true, true);
 RFIDBroadcaster<> _rfidBroadcaster(_runner, _ble);
 TrainDockSensor<> _trainDockSensor(_runner, _ble);
 
@@ -30,9 +30,10 @@ void setup()
 {
   Serial.begin(115200);
    _ble.begin();
+   Serial.println("Hello");
   _matrixR4.begin();
   _rfidBroadcaster.begin();
-  _trainDockSensor.begin();
+  //_trainDockSensor.begin();
 
   announceTask.enable();
 }
