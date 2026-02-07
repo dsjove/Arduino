@@ -5,12 +5,18 @@
       location = "group:Christof">
    </FileRef>
    <FileRef
-      location = "group:TrainStation">
+      location = "group:JoveMetroLine">
+   </FileRef>
+   <FileRef
+      location = "group:LightHouse">
+   </FileRef>
+   <FileRef
+      location = "group:shared">
    </FileRef>
    <FileRef
       location = "group:TheJoveExpress">
    </FileRef>
    <FileRef
-      location = "group:shared">
+      location = "group:TrainStation">
    </FileRef>
 </Workspace>

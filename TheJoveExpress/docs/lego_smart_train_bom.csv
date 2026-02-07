@@ -1,0 +1,28 @@
+Category,Owned,Item,Model,Qty,Estimated Cost USD
+LEGO,True,PF Rechargeable Battery Box,8878,1,0.0
+LEGO,True,PF Train Motor,88002,1,0.0
+LEGO,True,PF Lights,8870,1,0.0
+LEGO,True,Transformer,10V DC 45517,1,0.0
+MCU,False,ESP32 board,XIAO ESP32S3 Sense,1,11.0
+Motor Driver,False,Dual H-bridge,TB6612FNG breakout,1,6.0
+Power,False,5V Buck Converter,Pololu D24V50F5,1,10.0
+Power,False,Bulk capacitor,470µF ≥16V electrolytic,1,0.5
+Power,False,Bypass capacitor,0.1µF ceramic,2,0.2
+Power safety,False,Resettable polyfuse,2–3A PTC,1,1.0
+Audio,False,Audio amplifier,MAX98357A I2S,1,7.0
+Audio,False,Speaker,28–40mm 8Ω 1–3W,1,3.0
+Display,False,Color TFT display,1.54in ST7789 SPI,1,8.0
+Sensor,False,Ambient light sensor,VEML7700,1,6.0
+Sensor,False,Motion sensor,LSM6DS3TR-C,1,7.0
+Storage,False,microSD card,8–32GB microSDHC Class 10,1,5.0
+Dock power,False,Schottky diode,SS54 / MBR540,1,0.5
+Dock detect,False,Comparator,LM393,1,1.0
+Dock detect,False,Resistor divider,100k + 33k,1,0.2
+Dock detect,False,RC filter,10k + 0.1µF,1,0.2
+Charging,False,DC barrel jack,5.5×2.1mm panel mount,1,1.0
+Charging,False,DC barrel plug,5.5×2.1mm male pigtail,1,1.0
+Wiring,False,Hookup wire,26–30 AWG silicone,1,3.0
+Wiring,False,I2C cables,Qwiic / STEMMA QT,3,3.0
+Build,False,Perfboard,30×70mm,1,2.0
+Build,False,Heat shrink,Assorted,1,2.0
+Build,False,Connectors,JST / screw terminals,1,2.0

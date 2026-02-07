@@ -3,6 +3,7 @@
 #include <array>
 
 struct RFID {
+  using ID = std::array<uint8_t, 10>;
   using Encoded = std::array<uint8_t, 4 + 4 + 1 + 10>;
 
   RFID(uint8_t number)
@@ -16,7 +17,7 @@ struct RFID {
   const uint8_t _number;
   uint32_t _timestamp;
   uint8_t _length;
-  std::array<uint8_t, 10> _uuid;
+  ID _uuid;
 
   Encoded encode() const
   {

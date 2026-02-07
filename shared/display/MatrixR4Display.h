@@ -10,21 +10,28 @@
 Hardware:
 Arduino UNO R4 WiFi
 */
+struct MatrixR4DTraitsDft
+{
+	constexpr static const char* bleProperty = "07020000";
+	constexpr static bool flipY = false;
+	constexpr static bool flipX = false;
+	constexpr static bool invert = false;
+	constexpr static int animateMS = 100;
+};
+
+template <typename Traits = MatrixR4DTraitsDft>
 class MatrixR4Display : ScheduledRunner
 {
 public:
   using Value = MatrixR4Value;
+  using Callback = void (*)(const Value::Value&);
 
-  MatrixR4Display(Scheduler& scheduler, BLEServiceRunner& ble,
-                  bool flipY = false, bool flipX = false, bool invert = false)
-  : _flipY(flipY)
-  , _flipX(flipX)
-  , _invert(invert)
-  , _animate(true)
-  , _current(invert)
+  MatrixR4Display(Scheduler& scheduler, BLEServiceRunner& ble, Callback callback = nullptr)
+  : _current(Traits::invert)
   , _showing()
-  , _displayChar(ble, "07020000", _current.size(), _current.data(), bleUpdate)
-  , _animationTask(scheduler, 100, this, false)
+  , _callback(callback)
+  , _displayChar(ble, Traits::bleProperty, _current.size(), _current.data(), bleUpdate)
+  , _animationTask(scheduler, Traits::animateMS, this, false)
   {
     matrixRefR4 = this;
   }
@@ -36,25 +43,26 @@ public:
     _matrix.loadFrame(_showing.data());
   }
 
-  void update(const MatrixR4Value::Value& value, bool writeBLE = true)
+  void update(const MatrixR4Value::Value& value, bool fromBLE = false)
   {
-      if (_current.update(value, _flipY, _flipX, _invert))
+    if (_current.update(value, Traits::flipY, Traits::flipX, Traits::invert))
+    {
+      if (fromBLE)
       {
-        if (writeBLE)
-        {
-           _displayChar.ble.writeValue(_current.data(), _current.size());
-	    }
-        startAnimation();
+        _callback(value);
+      }
+      else
+      {
+        _displayChar.ble.writeValue(value.data(), _current.size());
+      }
+      startAnimation();
     }
   }
 
 private:
-  const bool _flipY;
-  const bool _flipX;
-  const bool _invert;
-  const bool _animate;
   Value _current;
   Value _showing;
+  Callback _callback;
   IDBTCharacteristic _displayChar;
   TaskThunk _animationTask;
 
@@ -69,14 +77,14 @@ private:
   {
     MatrixR4Value::Value value;
     characteristic.readValue(value.data(), sizeof(value));
-    matrixRefR4->update(value, false);
+    matrixRefR4->update(value, true);
   }
 
   void startAnimation()
   {
     _frameCount = 0;
     _frameIndex = 0;
-    if (_animate) _showing.animateTo(_current, _frames, _frameCount);
+    if (Traits::animateMS > 0) _showing.animateTo(_current, _frames, _frameCount);
 
     if (_frameCount == 0)
     {

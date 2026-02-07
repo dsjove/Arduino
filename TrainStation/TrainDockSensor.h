@@ -4,14 +4,14 @@
 #include "src/ble/IDBTCharacteristic.h"
 #include "src/PinIO/PinIO.h"
 
-struct TrainDockSensorDefaults
+struct TrainDockSensorTraitsDft
 {
   using Pin = PinIO<7, GpioMode::AnalogIn>;
-  static constexpr const char * propertyID = "01020002";
+  static constexpr const char * bleProperty = "01020002";
   static constexpr int timingMS = 250;
 };
 
-template<typename Traits = TrainDockSensorDefaults>
+template<typename Traits = TrainDockSensorTraitsDft>
 class TrainDockSensor : ScheduledRunner
 {
 public:
@@ -21,10 +21,12 @@ public:
     Passive,
     Charging
   };
+  using Callback = void (*)(Docked);
 
-  TrainDockSensor(Scheduler& scheduler, BLEServiceRunner& ble)
+  TrainDockSensor(Scheduler& scheduler, BLEServiceRunner& ble, Callback callback)
   : _detected(Docked::None)
-  , _sensedChar(ble, Traits::propertyID, &_detected)
+  , _callback(callback)
+  , _sensedChar(ble, Traits::bleProperty, &_detected)
   , _task(scheduler, Traits::timingMS, this)
   {
   }
@@ -35,6 +37,7 @@ public:
 
 private:
   Docked _detected;
+  Callback _callback;
   IDBTCharacteristic _sensedChar;
   TaskThunk _task;
 
@@ -43,6 +46,7 @@ private:
     auto value = Traits::Pin::read();
     auto detected = value < 5 ? Docked::None : value < 20 ? Docked::Passive : Docked::Charging;
     if (detected != _detected) {
+      if (_callback) _callback(detected);
       _sensedChar.ble.writeValue((uint8_t)detected);
     }
   }

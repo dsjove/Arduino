@@ -11,7 +11,7 @@ HiLetgo 3pcs RFID Kit - Mifare RC522 RF IC Card Sensor Module + S50 Blank Card +
 Timeskey NFC 20 Pack Mifare Classic 1k NFC Tag RFID Sticker 13.56mhz - ISO14443A Smart 25mm Adhesive Tags
  */
 
-struct RFIDDetectorDefaultTraits {
+struct RFIDDetectorTraitsDft {
   static constexpr uint8_t Number = 0;
   static constexpr uint8_t SsPin  = 10;
   using RstPin = PinIO<9, GpioMode::DigitalOut>;
@@ -21,7 +21,7 @@ struct RFIDDetectorDefaultTraits {
   static constexpr uint8_t  failResetCount  = 5;      // Reset after repeated failures
 };
 
-template <typename Traits = RFIDDetectorDefaultTraits>
+template <typename Traits = RFIDDetectorTraitsDft>
 class RFIDDetector {
 public:
   static constexpr uint8_t number  = Traits::Number;

@@ -1,0 +1,1 @@
+Use LEGO PF motor, lights, PF DC Adaptor, and IR receiver.

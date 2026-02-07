@@ -30,6 +30,7 @@ public:
   {
   }
 
+  inline const Value& value() const { return _value; }
   inline const uint32_t* data() const { return _value.data(); }
   inline size_t size() const { return sizeof(_value); }
 
