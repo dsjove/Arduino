@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 #include <SPI.h>
+#include "PinIO.h"
 
 #ifndef SPI_ON_ERROR
   #define SPI_ON_ERROR(msg) ((void)0)
@@ -13,24 +14,23 @@ public:
   using BeginFn = void (*)(int sckPin, int misoPin, int mosiPin);
   using ErrorFn = void (*)(const char* message);
 
-  static void init(int sckPin, int misoPin, int mosiPin, BeginFn fn = nullptr)
+#if defined(__cpp_concepts)
+  static constexpr bool kHasBeginWithPins = []{
+    if constexpr (requires { SPI.begin(0, 0, 0); }) { return true; }
+    else { return false; }
+  }();
+#else
+  static constexpr bool kHasBeginWithPins = false;
+#endif
+
+  SPIHardware(BeginFn fn = nullptr)
   {
-    auto& s = state();
+    state().overrideDefaults(fn);
+  }
 
-    if (s.begun)
-    {
-      reportError("[SPI] init() after begin()");
-      return;
-    }
-
-    s.sck  = sckPin;
-    s.miso = misoPin;
-    s.mosi = mosiPin;
-
-    if (fn)
-    {
-      s.beginFn = fn;
-    }
+  SPIHardware(int sckPin, int misoPin, int mosiPin, BeginFn fn = nullptr)
+  {
+    state().overrideDefaults(sckPin, misoPin, mosiPin, fn);
   }
 
   static bool valid()
@@ -43,26 +43,27 @@ public:
     state().errorFn = fn;
   }
 
+  template<typename PIN>
+  static void prepare()
+  {
+    // Assumes your GPIO type system provides this.
+    PIN::begin(GpioLevel::High);
+  }
+
+  // Call once after all devices have called prepare()
   static bool begin()
   {
-    auto& s = state();
+    return state().begin();
+  }
 
-    if (s.begun)
-    {
-      return true;
-    }
+  static void reportError(const char* msg)
+  {
+    state().reportError(msg);
+  }
 
-    if (!s.valid())
-    {
-      reportError(
-        "[SPI] Invalid config. Call SPIHardware::init(sck, miso, mosi[, beginFn]) in setup()."
-      );
-      return false;
-    }
-
-    s.beginFn(s.sck, s.miso, s.mosi);
-    s.begun = true;
-    return true;
+  static void debugPrint()
+  {
+    state().debugPrint();
   }
 
 #ifdef UNIT_TEST
@@ -73,30 +74,26 @@ public:
 #endif
 
 private:
-  static void reportError(const char* msg)
+  struct State; // forward declaration
+
+  static State& state()
   {
-    auto& s = state();
-    if (s.errorFn) s.errorFn(msg);
-    else           SPI_ON_ERROR(msg);
+    static State s;
+    return s;
   }
 
+  // Must be a free/static function matching BeginFn exactly.
   static void defaultBegin(int sckPin, int misoPin, int mosiPin)
   {
     (void)sckPin;
     (void)misoPin;
     (void)mosiPin;
-#if __cpp_concepts
-    if constexpr (requires { SPI.begin(sckPin, misoPin, mosiPin); })
-    {
+
+    if constexpr (kHasBeginWithPins) {
       SPI.begin(sckPin, misoPin, mosiPin);
-    }
-    else
-    {
+    } else {
       SPI.begin();
     }
-#else
-    SPI.begin();
-#endif
   }
 
   struct State
@@ -138,22 +135,81 @@ private:
     ErrorFn errorFn = nullptr;
     bool begun = false;
 
+    void overrideDefaults(int sckPin, int misoPin, int mosiPin, BeginFn fn = nullptr)
+    {
+      if (begun)
+      {
+        reportError("[SPI] init() after begin()");
+        return;
+      }
+      sck  = sckPin;
+      miso = misoPin;
+      mosi = mosiPin;
+      if (fn) { beginFn = fn; }
+    }
+
+    void overrideDefaults(BeginFn fn = nullptr)
+    {
+      if (begun)
+      {
+        reportError("[SPI] init() after begin()");
+        return;
+      }
+      if (fn) { beginFn = fn; }
+    }
+
     bool valid() const
     {
-      return
-        (sck >= 0) &&
-        (miso >= 0) &&
-        (mosi >= 0) &&
-        (sck != miso) &&
-        (miso != mosi) &&
-        (mosi != sck) &&
-        (beginFn != nullptr);
+      if constexpr (kHasBeginWithPins)
+      {
+        return
+          (sck >= 0) &&
+          (miso >= 0) &&
+          (mosi >= 0) &&
+          (sck != miso) &&
+          (miso != mosi) &&
+          (mosi != sck) &&
+          (beginFn != nullptr);
+      }
+      else
+      {
+        return (beginFn != nullptr);
+      }
+    }
+
+    bool begin()
+    {
+      if (begun) { return true; }
+
+      if (!valid())
+      {
+        reportError(
+          "[SPI] Invalid config. Call SPIHardware(sck, miso, mosi[, beginFn]) before begin()."
+        );
+        return false;
+      }
+
+      beginFn(sck, miso, mosi);
+      begun = true;
+      return true;
+    }
+
+    void reportError(const char* msg)
+    {
+      if (errorFn) errorFn(msg); else SPI_ON_ERROR(msg);
+    }
+
+    void debugPrint() const
+    {
+#ifdef ARDUINO
+      Serial.println("[SPI] Debug");
+      Serial.print("  hasBeginWithPins: "); Serial.println(kHasBeginWithPins ? 1 : 0);
+      Serial.print("  sck: "); Serial.println(sck);
+      Serial.print("  miso: "); Serial.println(miso);
+      Serial.print("  mosi: "); Serial.println(mosi);
+      Serial.print("  valid: "); Serial.println(valid() ? 1 : 0);
+      Serial.print("  begun: "); Serial.println(begun ? 1 : 0);
+#endif
     }
   };
-
-  static State& state()
-  {
-    static State s;
-    return s;
-  }
 };

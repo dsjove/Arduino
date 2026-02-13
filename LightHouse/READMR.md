@@ -1,1 +1,1 @@
-Use LEGO PF motor, lights, PF DC Adaptor, and IR receiver.
+This is implemented solely using LEGO PF components, Motor, Lights, and IR receiver.

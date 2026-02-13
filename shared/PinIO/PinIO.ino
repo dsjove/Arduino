@@ -67,6 +67,7 @@ private:
   GpioLevel state_ = GpioLevel::High;
 };
 
+SPIHardware spi;
 Lighting<> light1;
 Lighting<LightPinUnitTest> light2;
 Lighting<LightPinExpansionBoard> light3;
@@ -77,9 +78,7 @@ Mcp23017Device expansion;
 void setup()
 {
   Serial.begin(115200);
-  SPIHardware::begin();
-
-  expansion.begin();
+  spi.begin();
 
   light1.begin();
   light2.begin();

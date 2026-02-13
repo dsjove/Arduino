@@ -3,6 +3,7 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include <cstdint>
+#include <inttypes.h>
 
 #ifndef I2C_ON_ERROR
   #define I2C_ON_ERROR(msg) ((void)0)
@@ -11,27 +12,31 @@
 class I2CHardware
 {
 public:
-  using BeginFn = void (*)(int sdaPin, int sclPin);
+  using BeginFn = void (*)(int sdaPin, int sclPin, uint32_t hz);
   using ErrorFn = void (*)(const char* message);
 
-  static void init(int sdaPin, int sclPin, uint32_t hz, BeginFn fn = nullptr)
+#if defined(__cpp_concepts)
+  static constexpr bool kHasBeginWithPins = []{
+    if constexpr (requires { Wire.begin(0, 0); }) { return true; }
+    else { return false; }
+  }();
+#else
+  static constexpr bool kHasBeginWithPins = false;
+#endif
+
+  I2CHardware(BeginFn fn = nullptr)
   {
-    auto& s = state();
+    state().overrideDefaults(0, fn);
+  }
 
-    if (s.begun)
-    {
-      reportError("[I2C] init() after begin()");
-      return;
-    }
+  I2CHardware(uint32_t hz, BeginFn fn = nullptr)
+  {
+    state().overrideDefaults(hz, fn);
+  }
 
-    s.sda   = sdaPin;
-    s.scl   = sclPin;
-    s.clock = hz;
-
-    if (fn)
-    {
-      s.beginFn = fn;
-    }
+  I2CHardware(int sdaPin, int sclPin, uint32_t hz = 0, BeginFn fn = nullptr)
+  {
+    state().overrideDefaults(sdaPin, sclPin, hz, fn);
   }
 
   static bool valid()
@@ -44,28 +49,15 @@ public:
     state().errorFn = fn;
   }
 
+  // Call from any I2C device
   static bool begin()
   {
-    auto& s = state();
+    return state().begin();
+  }
 
-    if (s.begun)
-    {
-      return true;
-    }
-
-    if (!s.valid())
-    {
-      reportError(
-        "[I2C] Invalid config. Call I2CHardware::init(sda, scl, clock[, beginFn]) in setup()."
-      );
-      return false;
-    }
-
-    s.beginFn(s.sda, s.scl);
-    Wire.setClock(s.clock);
-
-    s.begun = true;
-    return true;
+  static void debugPrint()
+  {
+    state().debugPrint();
   }
 
 #ifdef UNIT_TEST
@@ -76,29 +68,22 @@ public:
 #endif
 
 private:
-  static void reportError(const char* msg)
+  struct State;   // forward declaration
+
+  static State& state()
   {
-    auto& s = state();
-    if (s.errorFn) s.errorFn(msg);
-    else           I2C_ON_ERROR(msg);
+    static State s;
+    return s;
   }
 
-  static void defaultBegin(int sdaPin, int sclPin)
+  static void defaultBegin(int sdaPin, int sclPin, uint32_t hz)
   {
-    (void)sdaPin;
-    (void)sclPin;
-#if __cpp_concepts
-    if constexpr (requires { Wire.begin(sdaPin, sclPin); })
-    {
+    if constexpr (kHasBeginWithPins) {
       Wire.begin(sdaPin, sclPin);
-    }
-    else
-    {
+    } else {
       Wire.begin();
     }
-#else
-    Wire.begin();
-#endif
+    Wire.setClock(hz);
   }
 
   struct State
@@ -128,19 +113,81 @@ private:
     ErrorFn errorFn = nullptr;
     bool begun = false;
 
+    void overrideDefaults(uint32_t hz, BeginFn fn = nullptr)
+    {
+      if (begun)
+      {
+        reportError("[I2C] init() after begin()");
+        return;
+      }
+      if (hz) { clock = hz; }
+      if (fn) { beginFn = fn; }
+    }
+
+    void overrideDefaults(int sdaPin, int sclPin, uint32_t hz, BeginFn fn = nullptr)
+    {
+      if (begun)
+      {
+        reportError("[I2C] init() after begin()");
+        return;
+      }
+      sda = sdaPin;
+      scl = sclPin;
+      if (hz) { clock = hz; }
+      if (fn) { beginFn = fn; }
+    }
+
     bool valid() const
     {
-      return
-        (sda >= 0) &&
-        (scl >= 0) &&
-        (sda != scl) &&
-        (beginFn != nullptr);
+      if constexpr (kHasBeginWithPins)
+      {
+        return
+          (sda >= 0) &&
+          (scl >= 0) &&
+          (sda != scl) &&
+          (beginFn != nullptr);
+      }
+      else
+      {
+        return (beginFn != nullptr);
+      }
+    }
+
+    bool begin()
+    {
+      if (begun) { return true; }
+
+      if (!valid())
+      {
+        reportError(
+          "[I2C] Invalid config. Call I2CHardware(...) before begin()."
+        );
+        return false;
+      }
+
+      beginFn(sda, scl, clock);
+
+      begun = true;
+      return true;
+    }
+
+    void reportError(const char* msg)
+    {
+      if (errorFn) errorFn(msg); else I2C_ON_ERROR(msg);
+    }
+
+    void debugPrint() const
+    {
+#ifdef ARDUINO
+      Serial.println("[I2C] Debug");
+      Serial.print("  hasBeginWithPins: "); Serial.println(kHasBeginWithPins ? 1 : 0);
+      Serial.print("  sda: "); Serial.println(sda);
+      Serial.print("  scl: "); Serial.println(scl);
+      Serial.print("  clock: "); Serial.println(clock);
+      Serial.print("  valid: "); Serial.println(valid() ? 1 : 0);
+      Serial.print("  begun: "); Serial.println(begun ? 1 : 0);
+#endif
     }
   };
-
-  static State& state()
-  {
-    static State s;
-    return s;
-  }
 };
+

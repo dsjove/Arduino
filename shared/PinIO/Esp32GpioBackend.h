@@ -4,8 +4,46 @@
 
 #include <Arduino.h>
 #include <cstdint>
+#include <driver/gpio.h>
 
 #include "ArduinoGpioBackend.h"
+
+// Works with Arduino pin constants D0..D10 on XIAO ESP32S3
+constexpr gpio_num_t arduinoPinToGpio(int pin)
+{
+  switch (pin) {
+    case D0:  return GPIO_NUM_1;
+    case D1:  return GPIO_NUM_2;
+    case D2:  return GPIO_NUM_3;
+    case D3:  return GPIO_NUM_4;
+    case D4:  return GPIO_NUM_5;
+    case D5:  return GPIO_NUM_6;
+    case D6:  return GPIO_NUM_43;
+    case D7:  return GPIO_NUM_44;
+    case D8:  return GPIO_NUM_7;
+    case D9:  return GPIO_NUM_8;
+    case D10: return GPIO_NUM_9;
+    default:  return GPIO_NUM_NC;
+  }
+}
+
+constexpr int gpioToArduinoPin(gpio_num_t g)
+{
+  switch (g) {
+    case GPIO_NUM_1:  return D0;
+    case GPIO_NUM_2:  return D1;
+    case GPIO_NUM_3:  return D2;
+    case GPIO_NUM_4:  return D3;
+    case GPIO_NUM_5:  return D4;
+    case GPIO_NUM_6:  return D5;
+    case GPIO_NUM_43: return D6;
+    case GPIO_NUM_44: return D7;
+    case GPIO_NUM_7:  return D8;
+    case GPIO_NUM_8:  return D9;
+    case GPIO_NUM_9:  return D10;
+    default:          return -1;   // not a D# pin on this board
+  }
+}
 
 // ESP-IDF SoC capability headers (Arduino-ESP32)
 #if __has_include("soc/soc_caps.h")
@@ -433,3 +471,5 @@ using Esp32UnknownGpioBackend = Esp32GpioBackend<Esp32UnknownTraits>;
 #endif
 
 #endif
+
+}
