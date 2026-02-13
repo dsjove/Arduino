@@ -6,5 +6,5 @@
 namespace TheFS
 {
   inline fs::FS* _fs = nullptr;
-  inline fs::FS& fs() { *_fs; }
+  inline fs::FS& fs() { return *_fs; }
 }

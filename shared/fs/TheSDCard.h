@@ -144,13 +144,3 @@ public:
 private:
   bool _mounted = false;
 };
-
-// -----------------------------------------------------------------------------
-// Convenience aliases
-// -----------------------------------------------------------------------------
-
-using TheSDCardSPI = TheSDCard<TheSDCardDefaultTraits>;
-
-#if defined(ARDUINO_ARCH_ESP32)
-using TheSDCardMMC = TheSDCard<TheSDCardMMCTraits>;
-#endif
