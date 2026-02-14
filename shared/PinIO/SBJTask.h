@@ -44,7 +44,7 @@ public:
     if constexpr (Behavior == LoopBehavior::Yield) {
       taskYIELD();
     } else if constexpr (Behavior == LoopBehavior::DelayTicks) {
-      vTaskDelay((Param == 0) ? 1 : Param); // avoid 0 meaning "no-op"; keep loop cooperative
+      vTaskDelay((Param == 0) ? 1 : Param);
     } else if constexpr (Behavior == LoopBehavior::DelayMs) {
       vTaskDelay(pdMS_TO_TICKS((Param == 0) ? 1 : Param));
     } else {
@@ -59,23 +59,44 @@ public:
 
   using Fn0 = void (*)();
 
-#if SBJVTask
-  template <uint32_t IntervalMs, int32_t Iterations, uint32_t StartDelayMs>
+  template <uint32_t IntervalMs_, int32_t Iterations_, uint32_t StartDelayMs_>
   struct TimingTraits {
-    // Sanity checks at compile time (C++17)
-    static_assert(Iterations == FOREVER || Iterations > 0,
+    static_assert(Iterations_ == FOREVER || Iterations_ > 0,
                   "Iterations must be FOREVER (-1) or > 0");
-
+#if SBJVTask
     static constexpr uint32_t msToTicks(uint32_t ms) {
       return (ms == 0) ? 0u
                        : ((ms + (uint32_t)portTICK_PERIOD_MS - 1u) / (uint32_t)portTICK_PERIOD_MS);
     }
-
-    static constexpr uint32_t startDelayTicks = msToTicks(StartDelayMs);
-    static constexpr uint32_t intervalTicks   = msToTicks(IntervalMs);
-    static constexpr int32_t  iterations      = Iterations;
-  };
+    static constexpr uint32_t intervalTicks   = msToTicks(IntervalMs_);
+    static constexpr int32_t  iterations      = Iterations_;
+    static constexpr uint32_t startDelayTicks = msToTicks(StartDelayMs_);
 #endif
+    static constexpr uint32_t IntervalMs   = IntervalMs_;
+    static constexpr int32_t  Iterations   = Iterations_;
+    static constexpr uint32_t StartDelayMs = StartDelayMs_;
+  };
+
+  // begin(): deferred start
+  inline void begin() {
+    if (_begun) return;
+#if SBJVTask
+    if (_entry == nullptr) return;
+    (void)xTaskCreatePinnedToCore(
+        _entry,
+        _name ? _name : "SBJTask",
+        _stackDepth,
+        this,
+        _priority,
+        &_handle,
+        _coreId);
+#else
+    _task.enable();
+#endif
+    _begun = true;
+  }
+
+  inline bool begun() const { return _begun; }
 
   template <uint32_t IntervalMs = 1, int32_t Iterations = FOREVER, uint32_t StartDelayMs = 0>
   SBJTask(
@@ -87,20 +108,21 @@ public:
 #if SBJVTask
   : _fn0_runtime(fn)
   , _arg_runtime(nullptr)
+  , _name(name)
+  , _stackDepth(stackDepth)
+  , _priority(static_cast<UBaseType_t>(priority))
+  , _coreId(coreId)
+  , _entry(nullptr)
+  , _handle(nullptr)
+  , _begun(false)
 #else
-  : _task(IntervalMs, Iterations, fn, &_scheduler, true)
+  : _task(IntervalMs, Iterations, fn, &_scheduler, false)
+  , _begun(false)
 #endif
   {
 #if SBJVTask
     using TT = TimingTraits<IntervalMs, Iterations, StartDelayMs>;
-    (void)xTaskCreatePinnedToCore(
-        &espEntry<TT, InvokeRuntimeFn0>,
-        name,
-        stackDepth,
-        this,
-        static_cast<UBaseType_t>(priority),
-        nullptr,
-        coreId);
+    _entry = &espEntry<TT, InvokeRuntimeFn0>;
 #else
     if constexpr (StartDelayMs != 0) _task.delay(StartDelayMs);
     (void)stackDepth; (void)priority; (void)coreId; (void)name;
@@ -118,23 +140,62 @@ public:
 #if SBJVTask
   : _fn0_runtime(nullptr)
   , _arg_runtime(static_cast<void*>(obj))
+  , _name(name)
+  , _stackDepth(stackDepth)
+  , _priority(static_cast<UBaseType_t>(priority))
+  , _coreId(coreId)
+  , _entry(nullptr)
+  , _handle(nullptr)
+  , _begun(false)
 #else
-  : _task(IntervalMs, Iterations, &taskMemWrapper<T, Method>, &_scheduler, true)
+  : _task(IntervalMs, Iterations, &taskMemWrapper<T, Method>, &_scheduler, false)
+  , _begun(false)
 #endif
   {
 #if SBJVTask
     using TT = TimingTraits<IntervalMs, Iterations, StartDelayMs>;
-    (void)xTaskCreatePinnedToCore(
-        &espEntry<TT, InvokeMember<T, Method>>,
-        name,
-        stackDepth,
-        this,
-        static_cast<UBaseType_t>(priority),
-        nullptr,
-        coreId);
+    _entry = &espEntry<TT, InvokeMember<T, Method>>;
 #else
     _task.setLtsPointer(obj);
     if constexpr (StartDelayMs != 0) _task.delay(StartDelayMs);
+    (void)stackDepth; (void)priority; (void)coreId; (void)name;
+#endif
+  }
+
+  // Descriptor-based constructor
+  template <typename Desc>
+  SBJTask(
+      const char*  name,
+      uint32_t     stackDepth,
+      typename Desc::Obj* obj,
+      TaskPriority priority = TaskPriority::Low,
+      CoreID       coreId   = 0,
+      Desc         = Desc{})
+#if SBJVTask
+  : _fn0_runtime(nullptr)
+  , _arg_runtime(static_cast<void*>(obj))
+  , _name(name)
+  , _stackDepth(stackDepth)
+  , _priority(static_cast<UBaseType_t>(priority))
+  , _coreId(coreId)
+  , _entry(nullptr)
+  , _handle(nullptr)
+  , _begun(false)
+#else
+  : _task(Desc::Timing::IntervalMs,
+          Desc::Timing::Iterations,
+          &taskMemWrapper<typename Desc::Obj, Desc::Method>,
+          &_scheduler,
+          false)
+  , _begun(false)
+#endif
+  {
+#if SBJVTask
+    using TT = typename Desc::Timing;
+    _entry = &espEntry<TT, InvokeMember<typename Desc::Obj, Desc::Method>>;
+#else
+    _task.setLtsPointer(static_cast<void*>(obj));
+    if constexpr (Desc::Timing::StartDelayMs != 0) _task.delay(Desc::Timing::StartDelayMs);
     (void)stackDepth; (void)priority; (void)coreId; (void)name;
 #endif
   }
@@ -146,11 +207,21 @@ public:
 
 private:
 #if SBJVTask
-  Fn0   const _fn0_runtime;  // only used by runtime-fn ctor; nullptr otherwise
-  void* const _arg_runtime;  // member-method object pointer; nullptr otherwise
+  Fn0   const _fn0_runtime;   // only used by runtime-fn ctor; nullptr otherwise
+  void* const _arg_runtime;   // member-method object pointer; nullptr otherwise
+
+  // Deferred creation state
+  const char*     _name;
+  uint32_t        _stackDepth;
+  UBaseType_t     _priority;
+  CoreID          _coreId;
+  TaskFunction_t  _entry;
+  TaskHandle_t    _handle;
+  bool            _begun;
 #else
   static inline Scheduler _scheduler;
   Task _task;
+  bool _begun;
 #endif
 
 #if SBJVTask

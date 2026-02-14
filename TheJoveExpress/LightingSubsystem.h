@@ -8,6 +8,7 @@
 
 #include "src/PinIO/PinIO.h"
 #include "src/PinIO/I2CHardware.h"
+#include "src/PinIO/SBJTask.h"
 
 struct DefaultLightingTraits
 {
@@ -38,7 +39,14 @@ template <typename Traits = DefaultLightingTraits>
 class LightingSubsystem
 {
 public:
-  static void begin(Scheduler& sched)
+ // Inside LightingSubsystem
+
+  LightingSubsystem()
+  : _task("lighting", 4096, this, TaskPriority::Low, 0, LightingTaskDesc{})
+  {
+  }
+
+  void begin()
   {
     Traits::HeadLightPwm.begin(0);
     Traits::CarLightPwm.begin(0);
@@ -47,19 +55,25 @@ public:
     {
       Serial.println("[lighting] sensor begin failed");
     }
-//    sched.addTask(task);
-//    task.enable();
+    _task.begin();
   }
 
 private:
   using SensorType = typename Traits::SensorType;
-  inline static float lux = 0.0f;
-  inline static SensorType sensor{};
-  
-  //inline static Task task(500, TASK_FOREVER, &_tick);
+  float lux = 0.0f;
+  SensorType sensor{};
 
-  static void _tick()
+  struct LightingTaskDesc {
+    using Obj = LightingSubsystem;
+    static constexpr void (Obj::*Method)() = &LightingSubsystem::tick;
+    using Timing = SBJTask::TimingTraits<1000, FOREVER, 0>;
+  };
+
+  SBJTask _task;
+
+  void tick()
   {
     lux = Traits::readLux(sensor);
+    Serial.println(lux);
   }
 };
