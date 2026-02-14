@@ -19,7 +19,7 @@
 
 //#include "src/audio/SbjAudioPlayerEsp32S3.h"
 #include "src/display/ST7789Display.h"
-#include "LightingSubsystem.h"
+#include "src/lighting/LightingSubsystem.h"
 
 //Wire color	I²C Function	Signal
 //Red	Power	VCC (3.3 V)
