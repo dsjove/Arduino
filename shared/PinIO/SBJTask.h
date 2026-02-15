@@ -54,117 +54,91 @@ public:
 #else
     (void)Behavior;
     (void)Param;
-    SchedState::scheduler.execute();
+    SchedulerState::scheduler.execute();
 #endif
   }
 
-  using Fn0 = void (*)();
+  struct Schedule
+  {
+    static constexpr int32_t kForever = FOREVER;
+    const uint32_t     intervalMs;
+    const int32_t      iterations;
+    const uint32_t     startDelayMs;
+    const uint32_t     stackDepth;
+    const TaskPriority priority;
+    const CoreID       coreId;
 
-  template <uint32_t IntervalMs_, int32_t Iterations_, uint32_t StartDelayMs_>
-  struct TimingTraits {
-    static_assert(Iterations_ == FOREVER || Iterations_ > 0,
-                  "Iterations must be FOREVER (-1) or > 0");
-#if SBJVTask
-    static constexpr uint32_t msToTicks(uint32_t ms) {
-      return (ms == 0) ? 0u
-                       : ((ms + (uint32_t)portTICK_PERIOD_MS - 1u)
-                          / (uint32_t)portTICK_PERIOD_MS);
-    }
-    static constexpr uint32_t intervalTicks   = msToTicks(IntervalMs_);
-    static constexpr int32_t  iterations      = Iterations_;
-    static constexpr uint32_t startDelayTicks = msToTicks(StartDelayMs_);
+    Schedule(uint32_t intervalMs_   = 1,
+             int32_t iterations_    = kForever,
+             uint32_t startDelayMs_ = 0,
+             uint32_t stackDepth_   = 4096,
+             TaskPriority priority_ = TaskPriority::Low,
+             CoreID coreId_         = 0)
+    : intervalMs(intervalMs_)
+    , iterations(iterations_)
+    , startDelayMs(startDelayMs_)
+    , stackDepth(stackDepth_)
+    , priority(priority_)
+    , coreId(coreId_)
+    {
+#ifndef NDEBUG
+      if (intervalMs_ == 0) { /* invalid interval */ }
+      if (!(iterations_ == kForever || iterations_ > 0)) { /* invalid iterations */ }
 #endif
-    static constexpr uint32_t IntervalMs   = IntervalMs_;
-    static constexpr int32_t  Iterations   = Iterations_;
-    static constexpr uint32_t StartDelayMs = StartDelayMs_;
+    }
   };
+
+  using Fn0 = void (*)();
 
   // ============================================================
   // Runtime global function constructor
   // ============================================================
-  template <typename Timing = TimingTraits<1, FOREVER, 0>>
-  SBJTask(
-      const char*  name,
-      uint32_t     stackDepth,
-      Fn0          fn,
-      TaskPriority priority = TaskPriority::Low,
-      CoreID       coreId   = 0)
-  : _begun(false)
+  SBJTask(const char* name, Fn0 fn, Schedule schedule = Schedule{})
 #if SBJVTask
-  , _esp(name, stackDepth, priority, coreId)
+  : _esp(EspState::makeRuntime(name, schedule, fn))
 #else
-  , _sched{ Timing::IntervalMs, Timing::Iterations, Timing::StartDelayMs,
-            fn, nullptr }
+  : _scheduler(SchedulerState::makeRuntime(name, schedule, fn))
 #endif
-  {
-#if SBJVTask
-  _esp.template bindEntry<Timing, InvokeRuntimeFn0>(nullptr, fn);
-#else
-    ignoreUnused(name, stackDepth, priority, coreId);
-#endif
-  }
+  {}
 
   // ============================================================
   // Member method constructor
   // ============================================================
-  template <typename T, void (T::*Method)(),
-            typename Timing = TimingTraits<1, FOREVER, 0>>
-  SBJTask(
-      const char*  name,
-      uint32_t     stackDepth,
-      T*           obj,
-      TaskPriority priority = TaskPriority::Low,
-      CoreID       coreId   = 0)
-  : _begun(false)
+  template <typename T, void (T::*Method)()>
+  SBJTask(const char* name, T* obj, Schedule schedule = Schedule{})
 #if SBJVTask
-  , _esp(name, stackDepth, priority, coreId)
+  : _esp(EspState::template makeMember<T, Method>(name, schedule, obj))
 #else
-  , _sched{ Timing::IntervalMs, Timing::Iterations, Timing::StartDelayMs,
-            &taskMemWrapper<T, Method>, static_cast<void*>(obj) }
+  : _scheduler(SchedulerState::template makeMember<T, Method>(name, schedule, obj))
 #endif
-  {
-#if SBJVTask
-  _esp.template bindEntry<Timing, InvokeMember<T, Method>>(
-    nullptr, static_cast<void*>(obj));
-#else
-    ignoreUnused(name, stackDepth, priority, coreId);
-#endif
-  }
+  {}
 
   // ============================================================
-  // Descriptor constructor
+  // Descriptor constructor (expects Desc::schedule + Desc::Method)
   // ============================================================
   template <typename Desc>
-  SBJTask(
-      const char*  name,
-      uint32_t     stackDepth,
-      typename Desc::Obj* obj,
-      TaskPriority priority = TaskPriority::Low,
-      CoreID       coreId   = 0,
-      Desc         = Desc{})
-  : _begun(false)
+  SBJTask(const char* name, typename Desc::Obj* obj, Desc = Desc{})
 #if SBJVTask
-  , _esp(name, stackDepth, priority, coreId)
+  : _esp(EspState::template makeMember<typename Desc::Obj, Desc::Method>(name, Desc::schedule, obj))
 #else
-  , _sched{ Desc::Timing::IntervalMs, Desc::Timing::Iterations, Desc::Timing::StartDelayMs,
-            &taskMemWrapper<typename Desc::Obj, Desc::Method>, static_cast<void*>(obj) }
+  : _scheduler(SchedulerState::template makeMember<typename Desc::Obj, Desc::Method>(name, Desc::schedule, obj))
 #endif
+  {}
+
+  inline bool begun() const
   {
 #if SBJVTask
-  _esp.template bindEntry<typename Desc::Timing, InvokeMember<typename Desc::Obj, Desc::Method>>(
-    static_cast<void*>(obj), nullptr);
+    return _esp.begun;
 #else
-    ignoreUnused(name, stackDepth, priority, coreId);
+    return _scheduler.task.isEnabled();
 #endif
   }
 
-  inline bool begun() const { return _begun; }
-
-  inline void begin() {
-    if (_begun) return;
+  inline void begin()
+  {
+    if (begun()) return;
 #if SBJVTask
-    if (_esp.entry == nullptr) return;
-    (void)xTaskCreatePinnedToCore(
+    BaseType_t ok = xTaskCreatePinnedToCore(
         _esp.entry,
         _esp.name ? _esp.name : "SBJTask",
         _esp.stackDepth,
@@ -172,10 +146,13 @@ public:
         _esp.priority,
         &_esp.handle,
         _esp.coreId);
+
+    if (ok == pdPASS) {
+      _esp.begun = true;
+    }
 #else
-    _sched.task.enable();
+    _scheduler.task.enable();
 #endif
-    _begun = true;
   }
 
   SBJTask(const SBJTask&) = delete;
@@ -184,129 +161,156 @@ public:
   SBJTask& operator=(SBJTask&&) = delete;
 
 private:
-  bool _begun;
-
 #if SBJVTask
   struct EspState {
-    Fn0            fn0        = nullptr;
-    void*          arg        = nullptr;
-    const char*    name       = nullptr;
-    uint32_t       stackDepth = 0;
-    UBaseType_t    priority   = 0;
-    CoreID         coreId     = 0;
-    TaskFunction_t entry      = nullptr;
-    TaskHandle_t   handle     = nullptr;
+    using InitFn = bool (*)(SBJTask*);
+    using CallFn = void (*)(SBJTask*);
+    const InitFn initFn;
+    const CallFn callFn;
+    const TaskFunction_t entry;
+    const char*          name;
+    const Fn0            fn0;
+    const void*          arg;
+    const uint32_t       stackDepth;
+    const UBaseType_t    priority;
+    const CoreID         coreId;
+    const int32_t        iterations;
+    const TickType_t     intervalTicks;
+    const TickType_t     startDelayTicks;
+    bool                 begun;
+    TaskHandle_t         handle;
 
-    EspState() = default;
+    static inline bool initRuntime(SBJTask* self)
+    {
+      return self && self->_esp.fn0 != nullptr;
+    }
 
-    EspState(const char* n, uint32_t sd, TaskPriority pr, CoreID cid)
-    : fn0(nullptr)
-    , arg(nullptr)
+    static inline void callRuntime(SBJTask* self)
+    {
+      self->_esp.fn0();
+    }
+
+    template <typename T, void (T::*Method)()>
+    static inline bool initMember(SBJTask* self)
+    {
+      return self && self->_esp.arg != nullptr;
+    }
+
+    template <typename T, void (T::*Method)()>
+    static inline void callMember(SBJTask* self)
+    {
+      auto* obj = static_cast<T*>(const_cast<void*>(self->_esp.arg));
+      (obj->*Method)();
+    }
+
+    static void entryThunk(void* pv)
+    {
+      SBJTask* self = static_cast<SBJTask*>(pv);
+      if (!self) { vTaskDelete(nullptr); return; }
+
+      if (!self->_esp.initFn || !self->_esp.callFn) { vTaskDelete(nullptr); return; }
+      if (!self->_esp.initFn(self)) { vTaskDelete(nullptr); return; }
+
+      if (self->_esp.startDelayTicks == 0) taskYIELD();
+      else vTaskDelay(self->_esp.startDelayTicks);
+
+      if (self->_esp.iterations == FOREVER) {
+        for (;;) {
+          self->_esp.callFn(self);
+          if (self->_esp.intervalTicks == 0) taskYIELD();
+          else vTaskDelay(self->_esp.intervalTicks);
+        }
+      } else {
+        const int32_t iters = self->_esp.iterations;
+        for (int32_t i = 0; i < iters; ++i) {
+          self->_esp.callFn(self);
+          if (i + 1 < iters) {
+            if (self->_esp.intervalTicks == 0) taskYIELD();
+            else vTaskDelay(self->_esp.intervalTicks);
+          }
+        }
+      }
+
+      vTaskDelete(nullptr);
+    }
+
+    EspState(const char* n,
+             const Schedule& s,
+             const void* a,
+             Fn0 f,
+             InitFn initFn_,
+             CallFn callFn_)
+    : initFn(initFn_)
+    , callFn(callFn_)
+    , entry(&EspState::entryThunk)
     , name(n)
-    , stackDepth(sd)
-    , priority(static_cast<UBaseType_t>(pr))
-    , coreId(cid)
-    , entry(nullptr)
+    , fn0(f)
+    , arg(a)
+    , stackDepth(s.stackDepth)
+    , priority(static_cast<UBaseType_t>(s.priority))
+    , coreId(s.coreId)
+    , iterations(s.iterations)
+    , intervalTicks(pdMS_TO_TICKS(s.intervalMs))
+    , startDelayTicks(pdMS_TO_TICKS(s.startDelayMs))
+    , begun(false)
     , handle(nullptr)
     {}
 
-    template <typename Timing, typename Invoker>
-    inline void bindEntry(void* a, Fn0 f) {
-      fn0 = f;
-      arg = a;
-      entry = &SBJTask::espEntry<Timing, Invoker>;
+    static inline EspState makeRuntime(const char* n, const Schedule& s, Fn0 f)
+    {
+      return EspState(n, s, nullptr, f, &EspState::initRuntime, &EspState::callRuntime);
+    }
+
+    template <typename T, void (T::*Method)()>
+    static inline EspState makeMember(const char* n, const Schedule& s, T* obj)
+    {
+      return EspState(n,
+                      s,
+                      static_cast<const void*>(obj),
+                      nullptr,
+                      &EspState::template initMember<T, Method>,
+                      &EspState::template callMember<T, Method>);
     }
   } _esp;
 
 #else
-  struct SchedState {
+  struct SchedulerState {
     static inline Scheduler scheduler;
     Task task;
 
-    SchedState(uint32_t intervalMs,
-               int32_t  iterations,
-               uint32_t startDelayMs,
-               Fn0      fn,
-               void*    ltsObj)
+    template <typename T, void (T::*Method)()>
+    static inline void memberThunk()
+    {
+      Task* cur = Task::getCurrentTask();
+      auto* obj = cur ? static_cast<T*>(cur->getLtsPointer()) : nullptr;
+      if (obj) (obj->*Method)();
+    }
+
+    SchedulerState(uint32_t intervalMs,
+                   int32_t  iterations,
+                   uint32_t startDelayMs,
+                   Fn0      fn,
+                   void*    ltsObj)
     : task(intervalMs, iterations, fn, &scheduler, false)
     {
       if (startDelayMs != 0) task.delay(startDelayMs);
       if (ltsObj != nullptr) task.setLtsPointer(ltsObj);
     }
-  } _sched;
 
-  inline void ignoreUnused(const char* name,
-                           uint32_t stackDepth,
-                           TaskPriority priority,
-                           CoreID coreId) {
-    (void)name; (void)stackDepth; (void)priority; (void)coreId;
-  }
-#endif
-
-#if SBJVTask
-  template <typename Timing, typename Invoker>
-  static void espEntry(void* pv) {
-    runTimedLoop<Timing, Invoker>(
-        static_cast<SBJTask*>(pv));
-    vTaskDelete(nullptr);
-  }
-
-  template <typename Timing, typename Invoker>
-  static inline void runTimedLoop(SBJTask* self) {
-    if (!self) return;
-    if (!Invoker::init(self)) return;
-
-    constexpr uint32_t startDelayTicks = Timing::startDelayTicks;
-    constexpr uint32_t intervalTicks   = Timing::intervalTicks;
-    constexpr int32_t  iterations      = Timing::iterations;
-
-    if (startDelayTicks == 0) taskYIELD();
-    else vTaskDelay(startDelayTicks);
-
-    if constexpr (iterations == FOREVER) {
-      for (;;) {
-        Invoker::call(self);
-        if (intervalTicks == 0) taskYIELD();
-        else vTaskDelay(intervalTicks);
-      }
-    } else {
-      for (int32_t i = 0; i < iterations; ++i) {
-        Invoker::call(self);
-        if (i + 1 < iterations) {
-          if (intervalTicks == 0) taskYIELD();
-          else vTaskDelay(intervalTicks);
-        }
-      }
+    static inline SchedulerState makeRuntime(const char* /*name*/, const Schedule& s, Fn0 fn)
+    {
+      return SchedulerState(s.intervalMs, s.iterations, s.startDelayMs, fn, nullptr);
     }
-  }
 
-  struct InvokeRuntimeFn0 {
-    static inline bool init(SBJTask* self) {
-      return self && self->_esp.fn0 != nullptr;
+    template <typename T, void (T::*Method)()>
+    static inline SchedulerState makeMember(const char* /*name*/, const Schedule& s, T* obj)
+    {
+      return SchedulerState(s.intervalMs,
+                            s.iterations,
+                            s.startDelayMs,
+                            &SchedulerState::template memberThunk<T, Method>,
+                            static_cast<void*>(obj));
     }
-    static inline void call(SBJTask* self) {
-      self->_esp.fn0();
-    }
-  };
-
-  template <typename T, void (T::*Method)()>
-  struct InvokeMember {
-    using Obj = T;
-    static inline bool init(SBJTask* self) {
-      return self && self->_esp.arg != nullptr;
-    }
-    static inline void call(SBJTask* self) {
-      auto* obj = static_cast<Obj*>(self->_esp.arg);
-      (obj->*Method)();
-    }
-  };
-
-#else
-  template <typename T, void (T::*Method)()>
-  static inline void taskMemWrapper() {
-    Task* cur = Task::getCurrentTask();
-    auto* obj = cur ? static_cast<T*>(cur->getLtsPointer()) : nullptr;
-    if (obj) (obj->*Method)();
-  }
+  } _scheduler;
 #endif
 };
