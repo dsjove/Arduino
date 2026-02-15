@@ -47,11 +47,9 @@ private:
   {
     using Obj = LightingSubsystem;
     static constexpr void (Obj::*Method)() = &Obj::tick;
-
-    // Now that SBJTask::Schedule is constexpr-constructible, this can be constexpr too.
     static constexpr SBJTask::Schedule schedule{
       1000, FOREVER, 0,
-      4096, TaskPriority::Low, 0
+      4096, TaskPriority::Low, 1
     };
   };
 

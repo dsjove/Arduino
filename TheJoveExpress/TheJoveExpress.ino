@@ -4,7 +4,6 @@
 // #include "src/PinIO/Mcp23017Device.h"
 // #include "src/motor/TB6612Motor.h"
 // #include "src/wifi/TheTime.h"
-// #include "src/wifi/TheWifi.h"
 // #include <NimBLEDevice.h> //Designates BLE impl
 // #include "src/ble/TheBLE.h"
 // #include "mic.h"
@@ -15,6 +14,7 @@
 #include "src/PinIO/I2CHardware.h"
 #include "src/PinIO/SPIHardware.h"
 #include "src/PinIO/SBJTask.h"
+#include "src/wifi/TheWifi.h"
 #include "src/fs/TheSDCard.h"
 
 //#include "src/audio/SbjAudioPlayerEsp32S3.h"
@@ -52,14 +52,14 @@
 //   BCLK = D6
 //   LRCLK/WS = D7
 
-// const std::string serviceName = "The Jove Express";
+  const std::string serviceName = "The Jove Express";
 // TheBLE _ble(_taskScheduler, serviceName);
-// TheWifi _wifi(_taskScheduler, serviceName);
+  TheWifi _wifi(serviceName.c_str());
 
 // using expander = Mcp23017Device<>;
 SPIHardware spi(D8, D9, D10);
 I2CHardware i2c(D4, D5);
-//TheSDCard sdcard;
+TheSDCard sdcard;
 //SbjAudioPlayerEsp32S3 audio(D2, D6, D7);
 //ST7789Display<ST7789TraitsDft> display;
 LightingSubsystem<> lighting;
@@ -85,15 +85,15 @@ void setup()
   Serial.flush();
 
 // SPI
-  // sdcard.prepare();
+  sdcard.prepare();
   // display.prepare();
   spi.begin();
 
 // SDCard
-  // if (!sdcard.begin()) {
-  //   Serial.println("SDCard begin failed.");
-  //   return;
-  // }
+  if (!sdcard.begin()) {
+    Serial.println("SDCard begin failed.");
+    return;
+  }
 
 // Display
   // if (!display.begin()) {
@@ -109,7 +109,7 @@ void setup()
 
 // Comminications
   // _ble.begin();
-  // _wifi.begin();
+  _wifi.begin();
 
   lighting.begin();
 
@@ -118,12 +118,14 @@ void setup()
   // motor::begin();
   // docking::begin(_taskScheduler);
   // motion::begin(_taskScheduler);
+
+  SPIHardware::debugPrint();
+  I2CHardware::debugPrint();
+  sdcard.debugPrint();
 }
 
 void loop()
 {
-  // SPIHardware::debugPrint();
-  // sdcard.debugPrint();
   // display.drawBMP("/image.bmp");
   // audio.debugPrint();
   // if (!audio.playOnce("/pink_panther.wav"))

@@ -98,7 +98,7 @@ public:
 #if SBJVTask
   : _esp(EspState::makeRuntime(name, schedule, fn))
 #else
-  : _scheduler(SchedulerState::makeRuntime(name, schedule, fn))
+  : _scheduler(schedule, reinterpret_cast<SchedulerState::TaskCb>(fn), nullptr)
 #endif
   {}
 
@@ -110,7 +110,9 @@ public:
 #if SBJVTask
   : _esp(EspState::template makeMember<T, Method>(name, schedule, obj))
 #else
-  : _scheduler(SchedulerState::template makeMember<T, Method>(name, schedule, obj))
+  : _scheduler(schedule,
+               &SchedulerState::template memberThunk<T, Method>,
+               static_cast<void*>(obj))
 #endif
   {}
 
@@ -122,7 +124,9 @@ public:
 #if SBJVTask
   : _esp(EspState::template makeMember<typename Desc::Obj, Desc::Method>(name, Desc::schedule, obj))
 #else
-  : _scheduler(SchedulerState::template makeMember<typename Desc::Obj, Desc::Method>(name, Desc::schedule, obj))
+  : _scheduler(Desc::schedule,
+               &SchedulerState::template memberThunk<typename Desc::Obj, Desc::Method>,
+               static_cast<void*>(obj))
 #endif
   {}
 
@@ -302,21 +306,6 @@ private:
     {
       if (startDelayMs != 0) task.delay(startDelayMs);
       if (ltsObj != nullptr) task.setLtsPointer(ltsObj);
-    }
-
-    static inline SchedulerState makeRuntime(const char* /*name*/, const Schedule& s, Fn0 fn)
-    {
-      return SchedulerState(s.intervalMs, s.iterations, s.startDelayMs, fn, nullptr);
-    }
-
-    template <typename T, void (T::*Method)()>
-    static inline SchedulerState makeMember(const char* /*name*/, const Schedule& s, T* obj)
-    {
-      return SchedulerState(s.intervalMs,
-                            s.iterations,
-                            s.startDelayMs,
-                            &SchedulerState::template memberThunk<T, Method>,
-                            static_cast<void*>(obj));
     }
   } _scheduler;
 #endif

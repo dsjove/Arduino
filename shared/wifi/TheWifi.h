@@ -1,70 +1,117 @@
 #pragma once
 
-#include <WiFi.h>
-#include <WiFiManager.h>
-#define _TASK_LTS_POINTER
-#include <TaskScheduler.h>
+#include <Arduino.h>
 
+#if defined(ARDUINO_ARCH_ESP32)
+  #include <WiFi.h>
+#endif
+
+#include <WiFiManager.h>
+
+#include "../PinIO/SBJTask.h"
 #include "TheTime.h"
 
-class TheWifi {
+// Forward declare descriptor so we can friend it.
+struct TheWifiAutoConnectDesc;
+
+class TheWifi
+{
 public:
-  inline TheWifi(
-    Scheduler& sched,
-    const std::string& name,
-    int connectTimeoutSeconds = 15,
-    int portalTimeoutSeconds  = 180,
-    bool getTime = true)
-  : _name(name)
+  explicit TheWifi(const char* name,
+                   int connectTimeoutSeconds = 15,
+                   int portalTimeoutSeconds  = 180,
+                   bool syncTimeAfterConnect = true)
+  : _name(name ? name : "SBJ")
   , _connectTimeoutSeconds(connectTimeoutSeconds)
   , _portalTimeoutSeconds(portalTimeoutSeconds)
+  , _syncTimeAfterConnect(syncTimeAfterConnect)
   , _attempted(false)
   , _ok(false)
-  , _getTime(getTime)
-  // one time task for auto connect
+  , _manager()
+  , _autoConnectTask("WiFi", this, TheWifiAutoConnectDesc{})
   {
   }
 
-  inline void begin() {
-	// auto connect task enable
+  // Kick off WiFiManager autoConnect via SBJTask (one-shot).
+  // Safe to call repeatedly; only the first call does anything.
+  inline void begin()
+  {
+    if (_attempted) return;
+    _autoConnectTask.begin();
+  }
+
+  inline bool attempted() const { return _attempted; }
+  inline bool ok() const { return _ok; }
+
+  inline bool connected() const
+  {
+#if defined(ARDUINO_ARCH_ESP32)
+    return WiFi.status() == WL_CONNECTED;
+#else
+    return false;
+#endif
   }
 
 private:
-  const std::string _name;
-  const int _connectTimeoutSeconds;
-  const int _portalTimeoutSeconds;
+  friend struct TheWifiAutoConnectDesc;
+
+  const char* _name;
+  const int   _connectTimeoutSeconds;
+  const int   _portalTimeoutSeconds;
+  const bool  _syncTimeAfterConnect;
+
   bool _attempted;
   bool _ok;
-  bool _getTime;
-  Task _autoConnect;
 
-  WiFiManager manager;
+  WiFiManager _manager;
+  SBJTask     _autoConnectTask;
 
-  inline void _autoConnectCb() {
+  void autoConnectCb()
+  {
     _attempted = true;
 
+#if defined(ARDUINO_ARCH_ESP32)
     WiFi.mode(WIFI_STA);
+#endif
 
-    manager.setConnectTimeout(_connectTimeoutSeconds);
-    manager.setConfigPortalTimeout(_portalTimeoutSeconds);
+    _manager.setConnectTimeout(_connectTimeoutSeconds);
+    _manager.setConfigPortalTimeout(_portalTimeoutSeconds);
 
-    _ok = manager.autoConnect((_name + "-Setup").c_str(), nullptr);
+    // WiFiManager expects a C string SSID for the portal AP name.
+    // Keep this local buffer alive for the call.
+    char apName[48];
+    apName[0] = '\0';
+    snprintf(apName, sizeof(apName), "%s-Setup", _name);
 
-    if (_ok) {
-      Serial.println("WiFi connected");
-      Serial.print("IP: ");
+    _ok = _manager.autoConnect(apName);
+
+    if (_ok)
+    {
+#if defined(ARDUINO_ARCH_ESP32)
+      Serial.print("WiFi connected, IP=");
       Serial.println(WiFi.localIP());
+#else
+      Serial.println("WiFi connected");
+#endif
 
-      // Initialize SNTP time on successful WiFi connection (if not already done)
-      if (_getTime)
+      if (_syncTimeAfterConnect)
       {
         TheTime::reinitTime();
-	  }
-
-    } else {
+      }
+    }
+    else
+    {
       Serial.println("WiFi not connected (portal timed out or connect failed)");
     }
-
-    //autoConnectTask.disable();
   }
+
+  struct TheWifiAutoConnectDesc
+  {
+    using Obj = TheWifi;
+    static constexpr void (Obj::*Method)() = &Obj::autoConnectCb;
+    static constexpr SBJTask::Schedule schedule{
+      10, 1, 0,
+      8192, TaskPriority::Medium, 0
+    };
+  };
 };
