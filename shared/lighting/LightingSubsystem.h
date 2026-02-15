@@ -40,15 +40,16 @@ private:
   void tick()
   {
     _lux = Traits::readLux(_sensor);
-    // Optional: comment out if you don't want serial spam
-    // Serial.printf("[lighting] lux=%.2f\n", _lux);
+    Serial.println(_lux);
   }
 
   struct LightingTaskDesc
   {
     using Obj = LightingSubsystem;
     static constexpr void (Obj::*Method)() = &Obj::tick;
-    static inline const SBJTask::Schedule schedule{
+
+    // Now that SBJTask::Schedule is constexpr-constructible, this can be constexpr too.
+    static constexpr SBJTask::Schedule schedule{
       1000, FOREVER, 0,
       4096, TaskPriority::Low, 0
     };

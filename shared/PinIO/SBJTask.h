@@ -61,6 +61,7 @@ public:
   struct Schedule
   {
     static constexpr int32_t kForever = FOREVER;
+
     const uint32_t     intervalMs;
     const int32_t      iterations;
     const uint32_t     startDelayMs;
@@ -68,12 +69,12 @@ public:
     const TaskPriority priority;
     const CoreID       coreId;
 
-    Schedule(uint32_t intervalMs_   = 1,
-             int32_t iterations_    = kForever,
-             uint32_t startDelayMs_ = 0,
-             uint32_t stackDepth_   = 4096,
-             TaskPriority priority_ = TaskPriority::Low,
-             CoreID coreId_         = 0)
+    constexpr Schedule(uint32_t intervalMs_   = 1,
+                       int32_t iterations_    = kForever,
+                       uint32_t startDelayMs_ = 0,
+                       uint32_t stackDepth_   = 4096,
+                       TaskPriority priority_ = TaskPriority::Low,
+                       CoreID coreId_         = 0)
     : intervalMs(intervalMs_)
     , iterations(iterations_)
     , startDelayMs(startDelayMs_)
@@ -93,7 +94,7 @@ public:
   // ============================================================
   // Runtime global function constructor
   // ============================================================
-  SBJTask(const char* name, Fn0 fn, Schedule schedule = Schedule{})
+  SBJTask(const char* name, Fn0 fn, const Schedule& schedule = Schedule{})
 #if SBJVTask
   : _esp(EspState::makeRuntime(name, schedule, fn))
 #else
@@ -105,7 +106,7 @@ public:
   // Member method constructor
   // ============================================================
   template <typename T, void (T::*Method)()>
-  SBJTask(const char* name, T* obj, Schedule schedule = Schedule{})
+  SBJTask(const char* name, T* obj, const Schedule& schedule = Schedule{})
 #if SBJVTask
   : _esp(EspState::template makeMember<T, Method>(name, schedule, obj))
 #else
@@ -165,18 +166,24 @@ private:
   struct EspState {
     using InitFn = bool (*)(SBJTask*);
     using CallFn = void (*)(SBJTask*);
+
     const InitFn initFn;
     const CallFn callFn;
     const TaskFunction_t entry;
     const char*          name;
     const Fn0            fn0;
-    const void*          arg;
+
+    // Store the object pointer as mutable (needed for non-const member method),
+    // and make the pointer value itself immutable.
+    void* const          arg;
+
     const uint32_t       stackDepth;
     const UBaseType_t    priority;
     const CoreID         coreId;
     const int32_t        iterations;
     const TickType_t     intervalTicks;
     const TickType_t     startDelayTicks;
+
     bool                 begun;
     TaskHandle_t         handle;
 
@@ -199,7 +206,7 @@ private:
     template <typename T, void (T::*Method)()>
     static inline void callMember(SBJTask* self)
     {
-      auto* obj = static_cast<T*>(const_cast<void*>(self->_esp.arg));
+      auto* obj = static_cast<T*>(self->_esp.arg);
       (obj->*Method)();
     }
 
@@ -236,7 +243,7 @@ private:
 
     EspState(const char* n,
              const Schedule& s,
-             const void* a,
+             void* a,
              Fn0 f,
              InitFn initFn_,
              CallFn callFn_)
@@ -266,7 +273,7 @@ private:
     {
       return EspState(n,
                       s,
-                      static_cast<const void*>(obj),
+                      static_cast<void*>(obj),
                       nullptr,
                       &EspState::template initMember<T, Method>,
                       &EspState::template callMember<T, Method>);
@@ -281,7 +288,7 @@ private:
     template <typename T, void (T::*Method)()>
     static inline void memberThunk()
     {
-      Task* cur = Task::getCurrentTask();
+      Task* cur = scheduler.getCurrentTask();
       auto* obj = cur ? static_cast<T*>(cur->getLtsPointer()) : nullptr;
       if (obj) (obj->*Method)();
     }
